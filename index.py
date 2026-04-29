@@ -2,7 +2,7 @@
 # Instagram Profile API - Nexxon Hackers Edition
 # Developed by: Creator Shyamchand & Ayan
 # Organization: CEO & Founder Of - Nexxon Hackers
-# Features: JSON API + Beautiful Profile Viewer
+# Features: JSON API + Beautiful Profile Viewer + IMGBB Image Proxy
 # ------------------------------------------------------------
 
 from flask import Flask, request, jsonify, render_template_string
@@ -13,12 +13,15 @@ import json
 from datetime import datetime
 import time
 from functools import lru_cache
+import base64
 
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
 
 # ---------------- CONFIG ----------------
 COPYRIGHT_STRING = "Creator Shyamchand & Ayan - CEO & Founder Of - Nexxon Hackers"
+IMGBB_API_KEY = "8fb0a4e7c707858edd73349d5cf4f6e14"
+IMGBB_API_URL = "https://api.imgbb.com/1/upload"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -26,13 +29,6 @@ HEADERS = {
     "x-ig-app-id": "936619743392459",
     "Referer": "https://www.instagram.com/"
 }
-
-DESIRED_ORDER = [
-    "username", "full_name", "id", "biography", "is_private",
-    "is_verified", "profile_pic_url", "followers_count",
-    "following_count", "media_count", "recent_posts",
-    "checked_at"
-]
 
 # ---------------- HTML TEMPLATE ----------------
 HTML_TEMPLATE = '''
@@ -47,12 +43,9 @@ HTML_TEMPLATE = '''
 <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
-<script>tailwind.config={theme:{extend:{colors:{primary:'#E1306C',secondary:'#C13584',tertiary:'#833AB4'}}}}</script>
 <style>
-:root { --primary: #E1306C; --secondary: #C13584; }
+:root { --primary: #E1306C; }
 .insta-gradient { background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); }
 .endpoint-card { transition: all 0.3s ease; border-left: 4px solid var(--primary); }
 .endpoint-card:hover { transform: translateX(4px); box-shadow: 0 20px 25px -5px rgba(225,48,108,0.2); }
@@ -61,34 +54,80 @@ pre { margin: 0 !important; border-radius: 8px !important; }
 .tab-btn { transition: all 0.2s; cursor: pointer; }
 .tab-btn.active { background: #E1306C !important; color: white !important; }
 .json-viewer { background: #1e1e1e; border-radius: 8px; padding: 16px; overflow-x: auto; font-family: monospace; font-size: 13px; max-height: 500px; }
-/* Instagram Profile Card Styles */
-.ig-profile-card {
+/* Instagram Profile Card - Dark Theme */
+.ig-card {
     background: #181818;
-    border-radius: 16px;
+    border-radius: 20px;
     padding: 24px;
     color: white;
     max-width: 420px;
     margin: 0 auto;
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
-.ig-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
-.ig-avatar { width: 80px; height: 80px; border-radius: 50%; border: 2px solid #fff; object-fit: cover; background: #333; flex-shrink: 0; }
-.ig-username-badge { background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: 600; }
-.ig-stats { display: flex; justify-content: space-around; margin-bottom: 20px; text-align: center; }
-.ig-stat-num { font-size: 18px; font-weight: 700; }
-.ig-stat-label { font-size: 13px; color: #bbb; margin-top: 2px; }
-.ig-bio-section { margin-top: 16px; }
+.ig-header { display: flex; align-items: center; gap: 14px; margin-bottom: 22px; }
+.ig-avatar {
+    width: 80px; height: 80px; border-radius: 50%;
+    border: 2.5px solid #fff;
+    object-fit: cover; background: #2a2a2a;
+    flex-shrink: 0;
+    box-shadow: 0 0 20px rgba(225,48,108,0.3);
+}
+.ig-avatar-placeholder {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: linear-gradient(135deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 32px; font-weight: bold; color: white; flex-shrink: 0;
+}
+.ig-username-badge {
+    background: rgba(255,255,255,0.12);
+    padding: 7px 16px; border-radius: 20px;
+    font-size: 15px; font-weight: 600; letter-spacing: 0.3px;
+}
+.ig-stats { display: flex; justify-content: space-around; margin-bottom: 22px; text-align: center; }
+.ig-stat-num { font-size: 19px; font-weight: 700; letter-spacing: 0.5px; }
+.ig-stat-label { font-size: 13px; color: #aaa; margin-top: 3px; }
 .ig-fullname { font-size: 15px; font-weight: 600; color: #fff; }
-.ig-subtitle { font-size: 13px; color: #aaa; margin-top: 2px; }
-.ig-divider { border-top: 1px solid #333; margin: 10px 0; }
-.ig-bio { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #ddd; }
+.ig-subtitle { font-size: 13px; color: #aaa; margin-top: 3px; }
+.ig-divider { border-top: 1px solid #2a2a2a; margin: 12px 0; }
+.ig-bio { font-size: 12.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: #ccc; line-height: 1.6; white-space: pre-line; }
+.ig-badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; margin-top: 8px; }
+.ig-badge-verified { background: #3897f0; color: white; }
+.ig-badge-private { background: #ff4757; color: white; }
 .ig-posts-section { margin-top: 20px; }
+.ig-posts-title { font-size: 13px; color: #888; margin-bottom: 12px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
 .ig-posts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-.ig-post { position: relative; border-radius: 10px; overflow: hidden; cursor: pointer; background: #222; aspect-ratio: 1; }
-.ig-post img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
-.ig-post:hover img { transform: scale(1.05); }
-.ig-post-overlay { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); padding: 3px 8px; border-radius: 12px; color: white; font-size: 11px; display: flex; align-items: center; gap: 3px; }
-.ig-post-caption { position: absolute; bottom: 6px; left: 6px; right: 6px; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 6px; color: white; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ig-post {
+    position: relative; border-radius: 10px; overflow: hidden;
+    cursor: pointer; background: #1a1a1a;
+    aspect-ratio: 1;
+    transition: transform 0.2s;
+}
+.ig-post:hover { transform: scale(1.03); }
+.ig-post img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: opacity 0.3s;
+}
+.ig-post-overlay {
+    position: absolute; top: 6px; right: 6px;
+    background: rgba(0,0,0,0.65);
+    padding: 3px 8px; border-radius: 10px;
+    color: white; font-size: 10px;
+    display: flex; align-items: center; gap: 3px;
+    backdrop-filter: blur(4px);
+}
+.ig-post-caption {
+    position: absolute; bottom: 6px; left: 6px; right: 6px;
+    background: rgba(0,0,0,0.55);
+    padding: 3px 7px; border-radius: 6px;
+    color: #ddd; font-size: 9.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    backdrop-filter: blur(4px);
+}
+.ig-post-loading {
+    display: flex; align-items: center; justify-content: center;
+    color: #666; font-size: 11px;
+}
 .tab-container { display: flex; gap: 2px; margin-bottom: 20px; background: #1a1a1a; border-radius: 12px; padding: 4px; }
 .tab-option { flex: 1; text-align: center; padding: 10px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; color: #888; }
 .tab-option.active { background: #333; color: white; }
@@ -103,15 +142,15 @@ pre { margin: 0 !important; border-radius: 8px !important; }
         </div>
         <h1 class="text-3xl md:text-5xl font-extrabold text-gray-900 mb-2">Instagram Profile API</h1>
         <p class="text-base md:text-xl text-gray-600 mb-2">Free Instagram Public Profile Data</p>
-        <p class="text-xs text-gray-500">No Login • No API Key • Public Data Only</p>
+        <p class="text-xs text-gray-500">No Login • No API Key • IMGBB Image Proxy</p>
         <div class="mt-3 inline-flex flex-wrap justify-center gap-1 md:gap-2">
             <span class="px-2 md:px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">100% Free</span>
-            <span class="px-2 md:px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">No API Key</span>
+            <span class="px-2 md:px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">IMGBB Proxy</span>
             <span class="px-2 md:px-3 py-1 bg-pink-100 text-pink-700 rounded-full text-xs font-medium">Real Data</span>
         </div>
     </header>
 
-    <!-- Live Test Section -->
+    <!-- Live Test -->
     <section class="mb-8 bg-white rounded-3xl p-4 md:p-8 shadow-xl border border-pink-100">
         <h2 class="text-lg md:text-2xl font-bold text-gray-900 mb-4">🔍 Live Profile Viewer</h2>
         
@@ -126,9 +165,9 @@ pre { margin: 0 !important; border-radius: 8px !important; }
         </div>
         
         <div class="flex flex-col sm:flex-row gap-3 mb-4">
-            <input type="text" id="usernameInput" placeholder="Enter Instagram username (e.g., instagram)" 
+            <input type="text" id="usernameInput" placeholder="Enter Instagram username (e.g., creator_shyamchand_07)" 
                    class="flex-1 px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-pink-500 outline-none text-sm"
-                   value="instagram"
+                   value="creator_shyamchand_07"
                    oninput="this.value = this.value.replace('@', '')">
             <button id="searchBtn" class="insta-gradient text-white px-6 py-3 rounded-xl font-semibold hover:shadow-xl transition flex items-center justify-center gap-2 text-sm">
                 <i class="ri-search-line"></i>
@@ -138,10 +177,9 @@ pre { margin: 0 !important; border-radius: 8px !important; }
         
         <div class="flex gap-2 mb-4 flex-wrap">
             <span class="text-xs text-gray-500 py-1">Quick:</span>
+            <button onclick="document.getElementById('usernameInput').value='creator_shyamchand_07'; document.getElementById('searchBtn').click()" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-full text-pink-700 transition border border-pink-200">@creator_shyamchand_07</button>
             <button onclick="document.getElementById('usernameInput').value='instagram'; document.getElementById('searchBtn').click()" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-full text-pink-700 transition border border-pink-200">@instagram</button>
             <button onclick="document.getElementById('usernameInput').value='cristiano'; document.getElementById('searchBtn').click()" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-full text-pink-700 transition border border-pink-200">@cristiano</button>
-            <button onclick="document.getElementById('usernameInput').value='leomessi'; document.getElementById('searchBtn').click()" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-full text-pink-700 transition border border-pink-200">@leomessi</button>
-            <button onclick="document.getElementById('usernameInput').value='virat.kohli'; document.getElementById('searchBtn').click()" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-full text-pink-700 transition border border-pink-200">@virat.kohli</button>
         </div>
         
         <!-- Profile Card View -->
@@ -180,7 +218,7 @@ pre { margin: 0 !important; border-radius: 8px !important; }
                     <span class="w-10 h-10 insta-gradient rounded-xl flex items-center justify-center text-white text-lg">👤</span>
                     <div>
                         <h3 class="text-lg md:text-xl font-bold text-gray-900">Get Profile</h3>
-                        <p class="text-xs text-gray-500">Fetch Instagram profile data</p>
+                        <p class="text-xs text-gray-500">Fetch Instagram profile data with IMGBB proxy images</p>
                     </div>
                 </div>
                 <span class="px-3 py-1.5 bg-green-100 text-green-700 text-xs font-bold rounded-full">GET</span>
@@ -194,94 +232,43 @@ pre { margin: 0 !important; border-radius: 8px !important; }
                 <p class="text-sm font-semibold mb-3">💻 Code Examples:</p>
                 <div class="flex gap-1 mb-3 flex-wrap">
                     <button onclick="showCode(this, 'code-python')" class="tab-btn active px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">🐍 Python</button>
-                    <button onclick="showCode(this, 'code-java')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">☕ Java</button>
                     <button onclick="showCode(this, 'code-js')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">📜 JavaScript</button>
-                    <button onclick="showCode(this, 'code-php')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">🐘 PHP</button>
                     <button onclick="showCode(this, 'code-curl')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">📟 cURL</button>
                 </div>
                 
                 <div id="code-python" class="code-block">
                     <pre class="language-python"><code>import requests
 
-username = "instagram"
-url = f"https://api.example.com/api/profile/{username}"
-
-response = requests.get(url)
+# Get profile with IMGBB proxy images
+response = requests.get(
+    "https://api.example.com/api/profile/creator_shyamchand_07"
+)
 data = response.json()
 
 if data.get("success"):
-    print(f"👤 Name: {data['full_name']}")
-    print(f"📝 Bio: {data['biography']}")
-    print(f"👥 Followers: {data['followers_count']}")
-    print(f"📸 Posts: {data['media_count']}")
-    print(f"✅ Verified: {data['is_verified']}")</code></pre>
-                </div>
-                
-                <div id="code-java" class="code-block hidden">
-                    <pre class="language-java"><code>import java.net.http.*;
-import java.net.URI;
-
-HttpClient client = HttpClient.newHttpClient();
-HttpRequest request = HttpRequest.newBuilder()
-    .uri(URI.create("https://api.example.com/api/profile/instagram"))
-    .build();
-
-client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-    .thenAccept(System.out::println)
-    .join();</code></pre>
+    print(f"👤 {data['full_name']}")
+    print(f"👥 {data['followers_count']} followers")
+    print(f"🖼️ Avatar: {data['profile_pic_url']}")
+    for post in data['recent_posts']:
+        print(f"📸 {post['display_url']}")</code></pre>
                 </div>
                 
                 <div id="code-js" class="code-block hidden">
-                    <pre class="language-javascript"><code>fetch("https://api.example.com/api/profile/instagram")
+                    <pre class="language-javascript"><code>fetch("https://api.example.com/api/profile/creator_shyamchand_07")
   .then(res => res.json())
   .then(data => {
     if (data.success) {
       console.log(`${data.full_name} - ${data.followers_count} followers`);
+      // All image URLs are IMGBB proxy links
+      document.getElementById('avatar').src = data.profile_pic_url;
     }
   });</code></pre>
                 </div>
                 
-                <div id="code-php" class="code-block hidden">
-                    <pre class="language-php"><code>&lt;?php
-$username = "instagram";
-$url = "https://api.example.com/api/profile/" . $username;
-$data = json_decode(file_get_contents($url), true);
-
-if ($data['success']) {
-    echo "Name: " . $data['full_name'] . "\n";
-    echo "Followers: " . number_format($data['followers_count']);
-}
-?&gt;</code></pre>
-                </div>
-                
                 <div id="code-curl" class="code-block hidden">
-                    <pre class="language-bash"><code>curl "https://api.example.com/api/profile/instagram"</code></pre>
+                    <pre class="language-bash"><code>curl "https://api.example.com/api/profile/creator_shyamchand_07"</code></pre>
                 </div>
             </div>
-        </div>
-        
-        <!-- Sample Response -->
-        <div class="bg-gray-900 rounded-2xl p-4 md:p-6">
-            <h3 class="text-lg md:text-xl font-bold text-white mb-4">📋 Sample Response</h3>
-            <pre class="text-green-400 text-xs overflow-x-auto">{
-  "success": true,
-  "username": "instagram",
-  "full_name": "Instagram",
-  "id": "25025320",
-  "biography": "Bringing you closer to people...",
-  "is_private": false,
-  "is_verified": true,
-  "profile_pic_url": "https://...",
-  "followers_count": 678000000,
-  "following_count": 120,
-  "media_count": 7823,
-  "recent_posts": [...],
-  "checked_at": "2026-04-29 10:30:45 UTC",
-  "api_info": {
-    "developed_by": "Creator Shyamchand & Ayan",
-    "organization": "CEO & Founder Of - Nexxon Hackers"
-  }
-}</pre>
         </div>
     </section>
 
@@ -318,10 +305,7 @@ function switchView(view) {
     document.getElementById('tabJson').classList.toggle('active', view === 'json');
     document.getElementById('profileView').classList.toggle('hidden', view !== 'profile');
     document.getElementById('jsonView').classList.toggle('hidden', view !== 'json');
-    
-    if (currentData) {
-        displayData(currentData);
-    }
+    if (currentData) displayData(currentData);
 }
 
 function syntaxHighlight(json) {
@@ -346,45 +330,57 @@ function buildProfileCard(data) {
     const posts = data.recent_posts || [];
     const postsHTML = posts.slice(0, 6).map(post => `
         <div class="ig-post" onclick="window.open('https://www.instagram.com/p/${post.shortcode}', '_blank')">
-            <img src="${post.display_url}" alt="Post" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23333%22 width=%22100%22 height=%22100%22/></svg>'">
-            <div class="ig-post-overlay">❤️ ${formatNumber(post.likes)}</div>
+            <img src="${post.display_url}" alt="Post" 
+                 onerror="this.parentElement.innerHTML='<div class=\\'ig-post-loading\\' style=\\'height:100%\\'>📷</div>'"
+                 loading="lazy">
+            ${post.likes ? `<div class="ig-post-overlay">❤️ ${formatNumber(post.likes)}</div>` : ''}
             ${post.caption ? `<div class="ig-post-caption">${post.caption.substring(0, 40)}</div>` : ''}
         </div>
     `).join('');
 
+    // Check if avatar is valid
+    const avatarHTML = data.profile_pic_url && data.profile_pic_url !== 'N/A'
+        ? `<img src="${data.profile_pic_url}" alt="${data.username}" class="ig-avatar" onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" loading="lazy">
+           <div class="ig-avatar-placeholder" style="display:none">${(data.username || '?')[0].toUpperCase()}</div>`
+        : `<div class="ig-avatar-placeholder">${(data.username || '?')[0].toUpperCase()}</div>`;
+
     return `
-        <div class="ig-profile-card">
+        <div class="ig-card">
             <div class="ig-header">
-                <img src="${data.profile_pic_url}" alt="${data.username}" class="ig-avatar" onerror="this.src='https://via.placeholder.com/80/333/fff?text=IG'">
-                <div class="ig-username-badge">${data.username}</div>
+                ${avatarHTML}
+                <div>
+                    <div class="ig-username-badge">${data.username}</div>
+                </div>
             </div>
             
             <div class="ig-stats">
-                <div class="ig-stat-item">
+                <div>
                     <div class="ig-stat-num">${formatNumber(data.media_count)}</div>
                     <div class="ig-stat-label">posts</div>
                 </div>
-                <div class="ig-stat-item">
+                <div>
                     <div class="ig-stat-num">${formatNumber(data.followers_count)}</div>
                     <div class="ig-stat-label">followers</div>
                 </div>
-                <div class="ig-stat-item">
+                <div>
                     <div class="ig-stat-num">${formatNumber(data.following_count)}</div>
                     <div class="ig-stat-label">following</div>
                 </div>
             </div>
             
-            <div class="ig-bio-section">
-                <div class="ig-fullname">${data.full_name} ${data.is_verified ? '✅' : ''}</div>
-                ${data.biography ? `<div class="ig-subtitle">${data.biography.split('\\n')[0]}</div>` : ''}
-                <div class="ig-divider"></div>
-                <div class="ig-bio">${data.biography ? data.biography.toUpperCase().substring(0, 200) : 'No bio'}</div>
-                ${data.is_private ? '<div style="color:#ff6b6b;margin-top:8px;font-size:13px;">🔒 Private Account</div>' : ''}
+            <div class="ig-fullname">${data.full_name} ${data.is_verified ? '✅' : ''}</div>
+            ${data.biography ? `<div class="ig-subtitle">${data.biography.split('\\n')[0]}</div>` : ''}
+            <div class="ig-divider"></div>
+            <div class="ig-bio">${data.biography ? data.biography.toUpperCase() : 'No bio'}</div>
+            
+            <div style="margin-top:8px;display:flex;gap:6px;">
+                ${data.is_verified ? '<span class="ig-badge ig-badge-verified">✅ Verified</span>' : ''}
+                ${data.is_private ? '<span class="ig-badge ig-badge-private">🔒 Private</span>' : ''}
             </div>
             
             ${posts.length > 0 ? `
             <div class="ig-posts-section">
-                <h4 style="margin-bottom:10px;font-size:14px;color:#aaa;">📸 Recent Posts</h4>
+                <div class="ig-posts-title">📸 Recent Posts</div>
                 <div class="ig-posts-grid">${postsHTML}</div>
             </div>` : ''}
         </div>
@@ -393,12 +389,10 @@ function buildProfileCard(data) {
 
 function displayData(data) {
     currentData = data;
-    
     if (currentView === 'profile') {
         document.getElementById('profileCard').innerHTML = buildProfileCard(data);
     } else {
-        const jsonStr = JSON.stringify(data, null, 2);
-        document.getElementById('jsonDisplay').innerHTML = syntaxHighlight(jsonStr);
+        document.getElementById('jsonDisplay').innerHTML = syntaxHighlight(JSON.stringify(data, null, 2));
     }
 }
 
@@ -419,16 +413,11 @@ async function fetchProfile() {
         
         if (data.success) {
             displayData(data);
-            if (currentView === 'profile') {
-                document.getElementById('profileView').classList.remove('hidden');
-            } else {
-                document.getElementById('jsonView').classList.remove('hidden');
-            }
+            document.getElementById(currentView === 'profile' ? 'profileView' : 'jsonView').classList.remove('hidden');
         } else {
             document.getElementById('errorText').textContent = data.error || 'Profile not found';
             document.getElementById('errorContainer').classList.remove('hidden');
         }
-        
     } catch (error) {
         document.getElementById('loadingContainer').classList.add('hidden');
         document.getElementById('errorText').textContent = error.message;
@@ -438,19 +427,15 @@ async function fetchProfile() {
 
 document.getElementById('searchBtn').addEventListener('click', fetchProfile);
 document.getElementById('usernameInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') fetchProfile(); });
-
-document.getElementById('copyBtn').addEventListener('click', function() {
-    const text = document.getElementById('jsonDisplay').textContent;
-    navigator.clipboard.writeText(text).then(() => {
-        const btn = document.getElementById('copyBtn');
-        btn.innerHTML = '<i class="ri-check-line"></i> Copied!';
-        setTimeout(() => btn.innerHTML = '<i class="ri-file-copy-line"></i> Copy JSON', 2000);
-    });
+document.getElementById('copyBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('jsonDisplay').textContent);
+    const btn = document.getElementById('copyBtn');
+    btn.innerHTML = '<i class="ri-check-line"></i> Copied!';
+    setTimeout(() => btn.innerHTML = '<i class="ri-file-copy-line"></i> Copy JSON', 2000);
 });
 
 // Auto-load default
 window.addEventListener('load', () => {
-    document.getElementById('usernameInput').value = 'instagram';
     fetchProfile();
 });
 </script>
@@ -458,10 +443,40 @@ window.addEventListener('load', () => {
 </html>
 '''
 
+# ---------------- IMGBB IMAGE UPLOAD ----------------
+def upload_to_imgbb(image_url):
+    """Upload image to IMGBB and return the viewer link"""
+    try:
+        # Fetch image from Instagram
+        resp = requests.get(image_url, headers=HEADERS, timeout=15)
+        if resp.status_code != 200:
+            return image_url  # Fallback to original
+        
+        # Convert to base64 for IMGBB
+        image_b64 = base64.b64encode(resp.content).decode('utf-8')
+        
+        # Upload to IMGBB
+        payload = {
+            'key': IMGBB_API_KEY,
+            'image': image_b64,
+        }
+        
+        upload_resp = requests.post(IMGBB_API_URL, data=payload, timeout=15)
+        if upload_resp.status_code == 200:
+            result = upload_resp.json()
+            if result.get('success'):
+                return result['data']['url']  # Return IMGBB viewer link
+        
+        return image_url  # Fallback to original
+        
+    except Exception as e:
+        print(f"IMGBB upload error: {e}")
+        return image_url  # Fallback to original
+
 # ---------------- INSTAGRAM SCRAPER ----------------
 @lru_cache(maxsize=128)
 def fetch_instagram_profile(username):
-    """Fetch Instagram profile data - FREE method"""
+    """Fetch Instagram profile data with IMGBB proxy images"""
     username = username.strip().replace('@', '')
     
     url = f"https://i.instagram.com/api/v1/users/web_profile_info/?username={username}"
@@ -485,23 +500,36 @@ def fetch_instagram_profile(username):
                 result["biography"] = user.get("biography", "N/A")
                 result["is_private"] = user.get("is_private", False)
                 result["is_verified"] = user.get("is_verified", False)
-                result["profile_pic_url"] = user.get("profile_pic_url_hd") or user.get("profile_pic_url", "N/A")
+                
+                # Upload profile pic to IMGBB
+                original_pic = user.get("profile_pic_url_hd") or user.get("profile_pic_url", "")
+                result["profile_pic_url"] = upload_to_imgbb(original_pic) if original_pic else "N/A"
+                
                 result["followers_count"] = user.get("edge_followed_by", {}).get("count", 0) or user.get("followers_count", 0)
                 result["following_count"] = user.get("edge_follow", {}).get("count", 0) or user.get("following_count", 0)
                 result["media_count"] = user.get("edge_owner_to_timeline_media", {}).get("count", 0) or user.get("media_count", 0)
                 
-                # Recent posts
+                # Recent posts with IMGBB proxy
                 media = user.get("edge_owner_to_timeline_media", {})
                 edges = media.get("edges", [])[:6]
                 recent = []
                 for edge in edges:
                     node = edge.get("node", {})
                     if node:
+                        original_display = node.get("display_url", "")
+                        imgbb_url = upload_to_imgbb(original_display) if original_display else ""
+                        
+                        like_count = 0
+                        if node.get("edge_liked_by"):
+                            like_count = node["edge_liked_by"].get("count", 0)
+                        elif node.get("edge_media_preview_like"):
+                            like_count = node["edge_media_preview_like"].get("count", 0)
+                        
                         recent.append({
                             "id": node.get("id"),
                             "shortcode": node.get("shortcode"),
-                            "display_url": node.get("display_url"),
-                            "likes": node.get("edge_liked_by", {}).get("count", 0) if node.get("edge_liked_by") else node.get("edge_media_preview_like", {}).get("count", 0),
+                            "display_url": imgbb_url or original_display,
+                            "likes": like_count,
                             "caption": node.get("edge_media_to_caption", {}).get("edges", [{}])[0].get("node", {}).get("text", "") if node.get("edge_media_to_caption") else ""
                         })
                 result["recent_posts"] = recent
@@ -522,7 +550,7 @@ def fetch_instagram_profile(username):
         except Exception as e:
             time.sleep(1)
     
-    return {"success": False, "error": "Failed to fetch profile. Try again later.", "username": username}
+    return {"success": False, "error": "Failed to fetch profile", "username": username}
 
 # ---------------- API ROUTES ----------------
 @app.route("/")
@@ -552,16 +580,11 @@ def api_profile(username):
 def api_batch():
     try:
         data = request.get_json()
-        
         if not data or "usernames" not in data:
-            return jsonify({
-                "success": False,
-                "error": "Please provide JSON with 'usernames' array"
-            }), 400
+            return jsonify({"success": False, "error": "Please provide JSON with 'usernames' array"}), 400
         
         usernames = data["usernames"][:10]
         results = []
-        
         for username in usernames:
             result = fetch_instagram_profile(username)
             results.append(result if result else {"success": False, "username": username})
@@ -575,7 +598,6 @@ def api_batch():
                 "organization": "CEO & Founder Of - Nexxon Hackers"
             }
         })
-        
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
