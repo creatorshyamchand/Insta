@@ -1,8 +1,8 @@
 # ------------------------------------------------------------
-# Instagram Profile Info API - Nexxon Hackers Edition
+# Instagram Profile API - Nexxon Hackers Edition
 # Developed by: Creator Shyamchand & Ayan
 # Organization: CEO & Founder Of - Nexxon Hackers
-# 100% FREE - No API Keys Required
+# Features: JSON API + Beautiful Profile Viewer
 # ------------------------------------------------------------
 
 from flask import Flask, request, jsonify, render_template_string
@@ -49,6 +49,7 @@ HTML_TEMPLATE = '''
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-java.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-php.min.js"></script>
 <script>tailwind.config={theme:{extend:{colors:{primary:'#E1306C',secondary:'#C13584',tertiary:'#833AB4'}}}}</script>
 <style>
 :root { --primary: #E1306C; --secondary: #C13584; }
@@ -59,8 +60,38 @@ HTML_TEMPLATE = '''
 pre { margin: 0 !important; border-radius: 8px !important; }
 .tab-btn { transition: all 0.2s; cursor: pointer; }
 .tab-btn.active { background: #E1306C !important; color: white !important; }
-.json-viewer { background: #1e1e1e; border-radius: 8px; padding: 16px; overflow-x: auto; font-family: 'Monaco',monospace; font-size: 13px; max-height: 500px; }
-.json-key { color: #9cdcfe; } .json-string { color: #ce9178; } .json-number { color: #b5cea8; }
+.json-viewer { background: #1e1e1e; border-radius: 8px; padding: 16px; overflow-x: auto; font-family: monospace; font-size: 13px; max-height: 500px; }
+/* Instagram Profile Card Styles */
+.ig-profile-card {
+    background: #181818;
+    border-radius: 16px;
+    padding: 24px;
+    color: white;
+    max-width: 420px;
+    margin: 0 auto;
+    font-family: Arial, Helvetica, sans-serif;
+}
+.ig-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.ig-avatar { width: 80px; height: 80px; border-radius: 50%; border: 2px solid #fff; object-fit: cover; background: #333; flex-shrink: 0; }
+.ig-username-badge { background: rgba(255,255,255,0.15); padding: 6px 14px; border-radius: 20px; font-size: 14px; font-weight: 600; }
+.ig-stats { display: flex; justify-content: space-around; margin-bottom: 20px; text-align: center; }
+.ig-stat-num { font-size: 18px; font-weight: 700; }
+.ig-stat-label { font-size: 13px; color: #bbb; margin-top: 2px; }
+.ig-bio-section { margin-top: 16px; }
+.ig-fullname { font-size: 15px; font-weight: 600; color: #fff; }
+.ig-subtitle { font-size: 13px; color: #aaa; margin-top: 2px; }
+.ig-divider { border-top: 1px solid #333; margin: 10px 0; }
+.ig-bio { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: #ddd; }
+.ig-posts-section { margin-top: 20px; }
+.ig-posts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.ig-post { position: relative; border-radius: 10px; overflow: hidden; cursor: pointer; background: #222; aspect-ratio: 1; }
+.ig-post img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s; }
+.ig-post:hover img { transform: scale(1.05); }
+.ig-post-overlay { position: absolute; top: 6px; right: 6px; background: rgba(0,0,0,0.6); padding: 3px 8px; border-radius: 12px; color: white; font-size: 11px; display: flex; align-items: center; gap: 3px; }
+.ig-post-caption { position: absolute; bottom: 6px; left: 6px; right: 6px; background: rgba(0,0,0,0.5); padding: 3px 6px; border-radius: 6px; color: white; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tab-container { display: flex; gap: 2px; margin-bottom: 20px; background: #1a1a1a; border-radius: 12px; padding: 4px; }
+.tab-option { flex: 1; text-align: center; padding: 10px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; transition: all 0.2s; color: #888; }
+.tab-option.active { background: #333; color: white; }
 </style>
 </head>
 <body class="bg-gradient-to-br from-pink-50 via-white to-purple-50 min-h-screen">
@@ -80,9 +111,19 @@ pre { margin: 0 !important; border-radius: 8px !important; }
         </div>
     </header>
 
-    <!-- Live Test -->
+    <!-- Live Test Section -->
     <section class="mb-8 bg-white rounded-3xl p-4 md:p-8 shadow-xl border border-pink-100">
-        <h2 class="text-lg md:text-2xl font-bold text-gray-900 mb-4">🔍 Live API Test</h2>
+        <h2 class="text-lg md:text-2xl font-bold text-gray-900 mb-4">🔍 Live Profile Viewer</h2>
+        
+        <!-- Tab Switcher -->
+        <div class="tab-container mb-4">
+            <div id="tabProfile" class="tab-option active" onclick="switchView('profile')">
+                <i class="ri-user-line mr-1"></i> Profile Card
+            </div>
+            <div id="tabJson" class="tab-option" onclick="switchView('json')">
+                <i class="ri-braces-line mr-1"></i> JSON Response
+            </div>
+        </div>
         
         <div class="flex flex-col sm:flex-row gap-3 mb-4">
             <input type="text" id="usernameInput" placeholder="Enter Instagram username (e.g., instagram)" 
@@ -103,14 +144,20 @@ pre { margin: 0 !important; border-radius: 8px !important; }
             <button onclick="document.getElementById('usernameInput').value='virat.kohli'; document.getElementById('searchBtn').click()" class="text-xs bg-pink-50 hover:bg-pink-100 px-3 py-1.5 rounded-full text-pink-700 transition border border-pink-200">@virat.kohli</button>
         </div>
         
-        <div id="responseContainer" class="hidden">
+        <!-- Profile Card View -->
+        <div id="profileView" class="hidden">
+            <div id="profileCard"></div>
+        </div>
+        
+        <!-- JSON View -->
+        <div id="jsonView" class="hidden">
             <div class="flex items-center justify-between mb-2">
-                <span class="text-sm font-semibold text-gray-700">Response:</span>
+                <span class="text-sm font-semibold text-gray-700">JSON Response:</span>
                 <button id="copyBtn" class="text-xs bg-pink-50 hover:bg-pink-100 text-pink-600 px-3 py-1.5 rounded-lg transition flex items-center gap-1">
                     <i class="ri-file-copy-line"></i> Copy JSON
                 </button>
             </div>
-            <pre id="responseDisplay" class="json-viewer"></pre>
+            <pre id="jsonDisplay" class="json-viewer"></pre>
         </div>
         
         <div id="loadingContainer" class="hidden text-center py-8">
@@ -149,6 +196,7 @@ pre { margin: 0 !important; border-radius: 8px !important; }
                     <button onclick="showCode(this, 'code-python')" class="tab-btn active px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">🐍 Python</button>
                     <button onclick="showCode(this, 'code-java')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">☕ Java</button>
                     <button onclick="showCode(this, 'code-js')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">📜 JavaScript</button>
+                    <button onclick="showCode(this, 'code-php')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">🐘 PHP</button>
                     <button onclick="showCode(this, 'code-curl')" class="tab-btn px-3 py-1.5 text-xs rounded-lg bg-gray-200 font-medium">📟 cURL</button>
                 </div>
                 
@@ -166,34 +214,44 @@ if data.get("success"):
     print(f"📝 Bio: {data['biography']}")
     print(f"👥 Followers: {data['followers_count']}")
     print(f"📸 Posts: {data['media_count']}")
-    print(f"✅ Verified: {data['is_verified']}")
-    print(f"🔒 Private: {data['is_private']}")
-else:
-    print(f"❌ Error: {data.get('error')}")</code></pre>
+    print(f"✅ Verified: {data['is_verified']}")</code></pre>
                 </div>
                 
                 <div id="code-java" class="code-block hidden">
-                    <pre class="language-java"><code>// Using OkHttp
-OkHttpClient client = new OkHttpClient();
-Request request = new Request.Builder()
-    .url("https://api.example.com/api/profile/instagram")
+                    <pre class="language-java"><code>import java.net.http.*;
+import java.net.URI;
+
+HttpClient client = HttpClient.newHttpClient();
+HttpRequest request = HttpRequest.newBuilder()
+    .uri(URI.create("https://api.example.com/api/profile/instagram"))
     .build();
 
-try (Response response = client.newCall(request).execute()) {
-    String jsonData = response.body().string();
-    System.out.println(jsonData);
-}</code></pre>
+client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
+    .thenAccept(System.out::println)
+    .join();</code></pre>
                 </div>
                 
                 <div id="code-js" class="code-block hidden">
-                    <pre class="language-javascript"><code>const username = "instagram";
-fetch(`https://api.example.com/api/profile/${username}`)
+                    <pre class="language-javascript"><code>fetch("https://api.example.com/api/profile/instagram")
   .then(res => res.json())
   .then(data => {
     if (data.success) {
       console.log(`${data.full_name} - ${data.followers_count} followers`);
     }
   });</code></pre>
+                </div>
+                
+                <div id="code-php" class="code-block hidden">
+                    <pre class="language-php"><code>&lt;?php
+$username = "instagram";
+$url = "https://api.example.com/api/profile/" . $username;
+$data = json_decode(file_get_contents($url), true);
+
+if ($data['success']) {
+    echo "Name: " . $data['full_name'] . "\n";
+    echo "Followers: " . number_format($data['followers_count']);
+}
+?&gt;</code></pre>
                 </div>
                 
                 <div id="code-curl" class="code-block hidden">
@@ -218,7 +276,7 @@ fetch(`https://api.example.com/api/profile/${username}`)
   "following_count": 120,
   "media_count": 7823,
   "recent_posts": [...],
-  "checked_at": "2026-04-26 10:30:45 UTC",
+  "checked_at": "2026-04-29 10:30:45 UTC",
   "api_info": {
     "developed_by": "Creator Shyamchand & Ayan",
     "organization": "CEO & Founder Of - Nexxon Hackers"
@@ -237,6 +295,9 @@ fetch(`https://api.example.com/api/profile/${username}`)
 </main>
 
 <script>
+let currentView = 'profile';
+let currentData = null;
+
 function showCode(btn, id) {
     const parent = btn.parentElement.parentElement;
     parent.querySelectorAll('.code-block').forEach(b => b.classList.add('hidden'));
@@ -251,6 +312,18 @@ document.querySelectorAll('.tab-btn.active').forEach(btn => {
     btn.classList.add('!bg-pink-600', 'text-white');
 });
 
+function switchView(view) {
+    currentView = view;
+    document.getElementById('tabProfile').classList.toggle('active', view === 'profile');
+    document.getElementById('tabJson').classList.toggle('active', view === 'json');
+    document.getElementById('profileView').classList.toggle('hidden', view !== 'profile');
+    document.getElementById('jsonView').classList.toggle('hidden', view !== 'json');
+    
+    if (currentData) {
+        displayData(currentData);
+    }
+}
+
 function syntaxHighlight(json) {
     json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\\s*:)?|\\b(true|false|null)\\b|-?\\d+(?:\\.\\d*)?(?:[eE][+\\-]?\\d+)?)/g, function(m) {
@@ -262,11 +335,79 @@ function syntaxHighlight(json) {
     });
 }
 
+function formatNumber(num) {
+    if (!num) return '0';
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function buildProfileCard(data) {
+    const posts = data.recent_posts || [];
+    const postsHTML = posts.slice(0, 6).map(post => `
+        <div class="ig-post" onclick="window.open('https://www.instagram.com/p/${post.shortcode}', '_blank')">
+            <img src="${post.display_url}" alt="Post" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22100%22 height=%22100%22><rect fill=%22%23333%22 width=%22100%22 height=%22100%22/></svg>'">
+            <div class="ig-post-overlay">❤️ ${formatNumber(post.likes)}</div>
+            ${post.caption ? `<div class="ig-post-caption">${post.caption.substring(0, 40)}</div>` : ''}
+        </div>
+    `).join('');
+
+    return `
+        <div class="ig-profile-card">
+            <div class="ig-header">
+                <img src="${data.profile_pic_url}" alt="${data.username}" class="ig-avatar" onerror="this.src='https://via.placeholder.com/80/333/fff?text=IG'">
+                <div class="ig-username-badge">${data.username}</div>
+            </div>
+            
+            <div class="ig-stats">
+                <div class="ig-stat-item">
+                    <div class="ig-stat-num">${formatNumber(data.media_count)}</div>
+                    <div class="ig-stat-label">posts</div>
+                </div>
+                <div class="ig-stat-item">
+                    <div class="ig-stat-num">${formatNumber(data.followers_count)}</div>
+                    <div class="ig-stat-label">followers</div>
+                </div>
+                <div class="ig-stat-item">
+                    <div class="ig-stat-num">${formatNumber(data.following_count)}</div>
+                    <div class="ig-stat-label">following</div>
+                </div>
+            </div>
+            
+            <div class="ig-bio-section">
+                <div class="ig-fullname">${data.full_name} ${data.is_verified ? '✅' : ''}</div>
+                ${data.biography ? `<div class="ig-subtitle">${data.biography.split('\\n')[0]}</div>` : ''}
+                <div class="ig-divider"></div>
+                <div class="ig-bio">${data.biography ? data.biography.toUpperCase().substring(0, 200) : 'No bio'}</div>
+                ${data.is_private ? '<div style="color:#ff6b6b;margin-top:8px;font-size:13px;">🔒 Private Account</div>' : ''}
+            </div>
+            
+            ${posts.length > 0 ? `
+            <div class="ig-posts-section">
+                <h4 style="margin-bottom:10px;font-size:14px;color:#aaa;">📸 Recent Posts</h4>
+                <div class="ig-posts-grid">${postsHTML}</div>
+            </div>` : ''}
+        </div>
+    `;
+}
+
+function displayData(data) {
+    currentData = data;
+    
+    if (currentView === 'profile') {
+        document.getElementById('profileCard').innerHTML = buildProfileCard(data);
+    } else {
+        const jsonStr = JSON.stringify(data, null, 2);
+        document.getElementById('jsonDisplay').innerHTML = syntaxHighlight(jsonStr);
+    }
+}
+
 async function fetchProfile() {
     const username = document.getElementById('usernameInput').value.trim().replace('@', '');
     if (!username) { alert('Please enter a username'); return; }
     
-    document.getElementById('responseContainer').classList.add('hidden');
+    document.getElementById('profileView').classList.add('hidden');
+    document.getElementById('jsonView').classList.add('hidden');
     document.getElementById('errorContainer').classList.add('hidden');
     document.getElementById('loadingContainer').classList.remove('hidden');
     
@@ -276,9 +417,17 @@ async function fetchProfile() {
         
         document.getElementById('loadingContainer').classList.add('hidden');
         
-        const jsonStr = JSON.stringify(data, null, 2);
-        document.getElementById('responseDisplay').innerHTML = syntaxHighlight(jsonStr);
-        document.getElementById('responseContainer').classList.remove('hidden');
+        if (data.success) {
+            displayData(data);
+            if (currentView === 'profile') {
+                document.getElementById('profileView').classList.remove('hidden');
+            } else {
+                document.getElementById('jsonView').classList.remove('hidden');
+            }
+        } else {
+            document.getElementById('errorText').textContent = data.error || 'Profile not found';
+            document.getElementById('errorContainer').classList.remove('hidden');
+        }
         
     } catch (error) {
         document.getElementById('loadingContainer').classList.add('hidden');
@@ -291,12 +440,18 @@ document.getElementById('searchBtn').addEventListener('click', fetchProfile);
 document.getElementById('usernameInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') fetchProfile(); });
 
 document.getElementById('copyBtn').addEventListener('click', function() {
-    const text = document.getElementById('responseDisplay').textContent;
+    const text = document.getElementById('jsonDisplay').textContent;
     navigator.clipboard.writeText(text).then(() => {
         const btn = document.getElementById('copyBtn');
         btn.innerHTML = '<i class="ri-check-line"></i> Copied!';
         setTimeout(() => btn.innerHTML = '<i class="ri-file-copy-line"></i> Copy JSON', 2000);
     });
+});
+
+// Auto-load default
+window.addEventListener('load', () => {
+    document.getElementById('usernameInput').value = 'instagram';
+    fetchProfile();
 });
 </script>
 </body>
@@ -346,7 +501,7 @@ def fetch_instagram_profile(username):
                             "id": node.get("id"),
                             "shortcode": node.get("shortcode"),
                             "display_url": node.get("display_url"),
-                            "likes": node.get("edge_liked_by", {}).get("count", 0),
+                            "likes": node.get("edge_liked_by", {}).get("count", 0) if node.get("edge_liked_by") else node.get("edge_media_preview_like", {}).get("count", 0),
                             "caption": node.get("edge_media_to_caption", {}).get("edges", [{}])[0].get("node", {}).get("text", "") if node.get("edge_media_to_caption") else ""
                         })
                 result["recent_posts"] = recent
